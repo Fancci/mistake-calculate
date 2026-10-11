@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>错题分布统计器</title>
+<style>
+/* ============================================================
+   错题分布统计器 —— 样式
+   设计取向：浅色卡片式，题号按钮做大（鼠标单击命中率高），
+             结果页可直接 Ctrl+P 打印成白底表格。
+   ============================================================ */
+:root{
+  --bg:#f4f6fa;
+  --card:#ffffff;
+  --line:#e3e7ee;
+  --line-strong:#cfd6e2;
+  --text:#1e2430;
+  --muted:#6b7484;
+  --primary:#2563eb;
+  --primary-d:#1d4ed8;
+  --primary-soft:#e8efff;
+  --danger:#e11d48;      /* 大量错误 */
+  --orange:#f97316;      /* 中量错误 */
+  --amber:#eab308;       /* 小量错误 */
+  --gray:#9aa4b2;        /* 无错误 */
+  --green:#16a34a;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(16,24,40,.05), 0 8px 24px -12px rgba(16,24,40,.14);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC","Hiragino Sans GB",sans-serif;
+  font-size:15px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.01em;}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit;}
+input{font-family:inherit;font-size:inherit;}
+
+/* ---------- 通用组件 ---------- */
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:9px 16px;border-radius:10px;font-weight:600;
+  border:1px solid transparent;transition:.15s;white-space:nowrap;
+}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn.primary{background:var(--primary);color:#fff;}
+.btn.primary:hover:not(:disabled){background:var(--primary-d);}
+.btn.ghost{background:#fff;border-color:var(--line-strong);color:var(--text);}
+.btn.ghost:hover:not(:disabled){background:#f2f5fa;border-color:#b9c3d3;}
+.btn.warn{background:#fff7ed;border-color:#fdba74;color:#b45309;}
+.btn.warn:hover:not(:disabled){background:#ffedd5;}
+.btn.danger-ghost{background:#fff;border-color:#fbcfe0;color:#be123c;}
+.btn.danger-ghost:hover:not(:disabled){background:#fff1f5;}
+.btn.lg{padding:12px 26px;font-size:16px;border-radius:12px;}
+.btn.block{width:100%;}
+
+.tag{
+  display:inline-block;padding:3px 10px;border-radius:999px;
+  background:var(--primary-soft);color:var(--primary-d);
+  font-size:13px;font-weight:600;
+}
+
+/* ---------- 屏幕切换 ---------- */
+.screen{display:none;}
+.screen.active{display:block;}
+
+/* ---------- 屏幕 1：初始化 ---------- */
+#scr-setup{max-width:640px;margin:0 auto;padding:56px 20px 40px;}
+#scr-setup h1{font-size:30px;margin-bottom:8px;}
+#scr-setup .sub{color:var(--muted);margin:0 0 26px;font-size:14.5px;}
+#scr-setup .card{padding:26px;}
+.field{display:block;margin-bottom:20px;}
+.field > span{display:block;font-weight:600;margin-bottom:8px;font-size:14.5px;}
+.field .req{color:var(--danger);font-size:12px;font-weight:700;margin-left:6px;}
+.field input{
+  width:100%;padding:12px 14px;border:1.5px solid var(--line-strong);
+  border-radius:10px;background:#fff;color:var(--text);outline:none;transition:.15s;
+}
+.field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.13);}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:-6px 0 22px;}
+.chip{
+  padding:6px 14px;border-radius:999px;border:1px solid var(--line-strong);
+  background:#fff;font-size:13.5px;color:var(--muted);transition:.15s;
+}
+.chip:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-soft);}
+.err{color:var(--danger);font-size:13.5px;margin:0 0 14px;min-height:20px;font-weight:600;}
+
+/* ---------- 顶栏 ---------- */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:12px 20px;background:rgba(255,255,255,.92);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+}
+.tb-left{display:flex;gap:8px;align-items:center;}
+.tb-stats{display:flex;gap:16px;margin-left:8px;font-size:13.5px;color:var(--muted);}
+.tb-stats b{color:var(--text);font-size:15px;}
+.tb-right{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;}
+
+/* ---------- 屏幕 2：录入 ---------- */
+.entry-wrap{
+  display:grid;grid-template-columns:minmax(0,1fr) 268px;
+  gap:18px;padding:18px 20px 40px;align-items:start;
+  max-width:1320px;margin:0 auto;
+}
+.panel{padding:22px;}
+.who{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;}
+.who-big{font-size:26px;font-weight:800;letter-spacing:-.02em;}
+.who-big span{color:var(--primary);}
+.who-sub{color:var(--muted);font-size:13px;}
+.label-row{margin:16px 0 18px;}
+.label-row input{
+  width:100%;max-width:400px;padding:10px 13px;border:1.5px solid var(--line);
+  border-radius:10px;outline:none;background:#fbfcfe;transition:.15s;
+}
+.label-row input:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12);}
+
+/* 题号网格 —— 鼠标单击目标做大 */
+.grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));
+  gap:10px;max-height:48vh;overflow-y:auto;padding:4px 4px 4px 0;
+}
+.qbtn{
+  min-height:60px;border-radius:12px;border:1.5px solid var(--line-strong);
+  background:#fff;font-size:19px;font-weight:700;color:#3b4557;
+  transition:transform .08s,background .12s,border-color .12s,color .12s;
+  display:flex;align-items:center;justify-content:center;
+}
+.qbtn:hover{border-color:var(--primary);background:#f5f8ff;}
+.qbtn:active{transform:scale(.95);}
+.qbtn.on{
+  background:var(--danger);border-color:var(--danger);color:#fff;
+  box-shadow:0 4px 12px -4px rgba(225,29,72,.55);
+}
+.qbtn.on:hover{background:#be123c;border-color:#be123c;}
+
+.entry-foot{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  margin-top:20px;padding-top:18px;border-top:1px dashed var(--line-strong);
+}
+.pick-info{font-size:14px;color:var(--muted);}
+.pick-info b{color:var(--danger);font-size:20px;font-weight:800;margin:0 2px;}
+.foot-btns{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;}
+.state-badge{
+  display:inline-block;padding:2px 10px;border-radius:999px;font-size:12.5px;
+  font-weight:700;background:#fff7ed;color:#b45309;border:1px solid #fdba74;
+}
+.state-badge.hide{display:none;}
+
+/* 右侧花名册 */
+.side{padding:16px;position:sticky;top:74px;max-height:calc(100vh - 100px);display:flex;flex-direction:column;}
+.side-head{font-weight:700;margin-bottom:12px;font-size:14.5px;}
+.side-head b{color:var(--primary);font-size:18px;}
+.roster{overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px;}
+.rrow{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:9px;
+  border:1px solid var(--line);background:#fbfcfe;font-size:13.5px;transition:.12s;
+}
+.rrow:hover{border-color:var(--primary);background:var(--primary-soft);}
+.rrow.cur{border-color:var(--primary);background:var(--primary-soft);box-shadow:inset 0 0 0 1px var(--primary);}
+.rrow .rname{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rrow .rmeta{color:var(--muted);font-size:12.5px;white-space:nowrap;}
+.rrow .rmeta.bad{color:var(--danger);font-weight:700;}
+.rrow .rmeta.abs{color:#b45309;font-weight:700;}
+.rrow .rmeta.ok{color:var(--green);font-weight:700;}
+.rrow .rdel{
+  color:#c3cad6;font-size:16px;line-height:1;padding:0 3px;border-radius:5px;
+}
+.rrow .rdel:hover{color:var(--danger);background:#fff1f5;}
+.empty-hint{color:var(--muted);font-size:13px;text-align:center;padding:22px 0;}
+
+/* ---------- 屏幕 3：结果 ---------- */
+.res-wrap{max-width:1080px;margin:0 auto;padding:20px 20px 56px;display:flex;flex-direction:column;gap:18px;}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:14px;}
+.stat{padding:16px 18px;}
+.stat .k{font-size:13px;color:var(--muted);margin-bottom:4px;}
+.stat .v{font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1.15;}
+.stat .v small{font-size:14px;font-weight:600;color:var(--muted);margin-left:3px;}
+.stat.hi .v{color:var(--danger);}
+
+.sec{padding:20px 22px;}
+.sec h3{font-size:16px;margin-bottom:4px;}
+.sec .hint{color:var(--muted);font-size:13px;margin:0 0 16px;}
+
+/* 阈值调节 */
+.th-row{display:flex;gap:22px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+.th-item{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;}
+.th-item input{
+  width:72px;padding:8px 10px;border:1.5px solid var(--line-strong);border-radius:9px;
+  text-align:center;font-weight:700;outline:none;transition:.15s;
+}
+.th-item input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.12);}
+.th-item input.invalid{border-color:var(--danger);background:#fff1f5;}
+.th-warn{color:var(--danger);font-size:13px;font-weight:600;margin:0;min-height:19px;}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:13.5px;color:var(--muted);}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;}
+
+/* 排名列表 */
+.rank{display:flex;flex-direction:column;gap:9px;}
+.rk{
+  display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;
+  background:#fbfcfe;border:1px solid var(--line);
+}
+.rk .no{
+  width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;background:#eef2f9;color:var(--muted);flex:none;
+}
+.rk.top1 .no{background:var(--danger);color:#fff;}
+.rk.top2 .no{background:var(--orange);color:#fff;}
+.rk.top3 .no{background:var(--amber);color:#4a3a00;}
+.rk .qn{font-weight:800;font-size:15.5px;flex:none;min-width:74px;}
+.rk .bar{flex:1;height:9px;border-radius:99px;background:#eef2f9;overflow:hidden;min-width:60px;}
+.rk .bar i{display:block;height:100%;border-radius:99px;}
+.rk .num{font-size:13.5px;font-weight:700;white-space:nowrap;min-width:124px;text-align:right;}
+
+/* 明细表 */
+table.tb{width:100%;border-collapse:collapse;font-size:14px;}
+table.tb th,table.tb td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);}
+table.tb th{
+  font-size:12.5px;color:var(--muted);font-weight:700;text-transform:none;
+  border-bottom:1.5px solid var(--line-strong);white-space:nowrap;
+}
+table.tb tbody tr:hover{background:#fafbfe;}
+table.tb td.qn{font-weight:800;}
+table.tb td.num{font-variant-numeric:tabular-nums;}
+.pill{
+  display:inline-block;padding:2px 11px;border-radius:999px;font-size:12.5px;
+  font-weight:700;color:#fff;white-space:nowrap;
+}
+.mini-bar{width:110px;height:8px;border-radius:99px;background:#eef2f9;display:inline-block;vertical-align:middle;overflow:hidden;}
+.mini-bar i{display:block;height:100%;border-radius:99px;}
+.res-empty{text-align:center;color:var(--muted);padding:30px 0;font-size:14.5px;}
+
+/* ---------- 打印：只留结果 ---------- */
+@media print{
+  body{background:#fff;}
+  .topbar,.no-print{display:none !important;}
+  .screen{display:none !important;}
+  #scr-result.active{display:block !important;}
+  .res-wrap{padding:0;max-width:none;}
+  .card,.sec{box-shadow:none;border:1px solid #ccc;break-inside:avoid;}
+  .grid,table.tb{max-height:none;overflow:visible;}
+}
+
+/* ---------- 窄屏 ---------- */
+@media (max-width:900px){
+  .entry-wrap{grid-template-columns:1fr;}
+  .side{position:static;max-height:none;}
+  .roster{max-height:230px;}
+  .tb-stats{display:none;}
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== 屏幕 1：初始化 ==================== -->
+<section id="scr-setup" class="screen active">
+  <h1>错题分布统计器</h1>
+  <p class="sub">批完一位学生的作业 → 点一下他错的题 → 点「下一位」。全部批完后自动汇总：错题集中在哪几题、每题多少人错、属于大量/中量/小量错误。</p>
+
+  <div class="card">
+    <label class="field">
+      <span>本次作业名称（可选，只用于导出文件名）</span>
+      <input id="hwName" type="text" maxlength="30" placeholder="例如：第三章 单元测验">
+    </label>
+
+    <label class="field">
+      <span>本次作业一共多少题？<b class="req">必填</b></span>
+      <input id="totalInput" type="number" min="1" max="200" step="1" placeholder="例如 20">
+    </label>
+
+    <div class="chips" id="quickChips">
+      <button class="chip" data-n="5">5 题</button>
+      <button class="chip" data-n="10">10 题</button>
+      <button class="chip" data-n="15">15 题</button>
+      <button class="chip" data-n="20">20 题</button>
+      <button class="chip" data-n="25">25 题</button>
+      <button class="chip" data-n="30">30 题</button>
+      <button class="chip" data-n="50">50 题</button>
+    </div>
+
+    <p id="setupErr" class="err"></p>
+    <button id="btnStart" class="btn primary lg block">开始录入</button>
+  </div>
+</section>
+
+<!-- ==================== 屏幕 2：录入 ==================== -->
+<section id="scr-entry" class="screen">
+  <div class="topbar">
+    <div class="tb-left">
+      <span class="tag" id="tbName">本次作业</span>
+      <span class="tag" id="tbTotal">共 0 题</span>
+    </div>
+    <div class="tb-stats" id="tbStats"></div>
+    <div class="tb-right">
+      <button id="btnExportTop" class="btn ghost">导出 CSV</button>
+      <button id="btnResult" class="btn primary">查看统计结果</button>
+      <button id="btnResetTop" class="btn danger-ghost">重新开始</button>
+    </div>
+  </div>
+
+  <div class="entry-wrap">
+    <main class="panel card">
+      <div class="who">
+        <div class="who-big">第 <span id="whoIdx">1</span> 位</div>
+        <div class="who-sub">点一下题号 = 这题错了，再点一下取消 &nbsp;|&nbsp; 一道题都没点 = 全对</div>
+        <span id="draftState" class="state-badge hide">缺交</span>
+      </div>
+
+      <div class="label-row">
+        <input id="labelInput" type="text" maxlength="20" placeholder="学号 / 姓名（可选，留空也没关系）">
+      </div>
+
+      <div class="grid" id="qGrid"></div>
+
+      <div class="entry-foot">
+        <div class="pick-info">已勾选 <b id="pickCount">0</b> 道错题</div>
+        <div class="foot-btns">
+          <button id="btnPrev" class="btn ghost">← 上一位</button>
+          <button id="btnClear" class="btn ghost">清空勾选</button>
+          <button id="btnAbsent" class="btn warn">缺交（直接记，不点错题）</button>
+          <button id="btnNext" class="btn primary lg">下一位 →</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="side card">
+      <div class="side-head">已录入 <b id="rosterCount">0</b> 人</div>
+      <div class="roster" id="roster"></div>
+    </aside>
+  </div>
+</section>
+
+<!-- ==================== 屏幕 3：结果 ==================== -->
+<section id="scr-result" class="screen">
+  <div class="topbar no-print">
+    <div class="tb-left"><span class="tag" id="rbName">本次作业</span></div>
+    <div class="tb-right">
+      <button id="btnPrint" class="btn ghost">打印 / 存 PDF</button>
+      <button id="btnExportRes" class="btn primary">导出 CSV</button>
+      <button id="btnBackEntry" class="btn ghost">← 返回录入</button>
+      <button id="btnResetRes" class="btn danger-ghost">重新开始</button>
+    </div>
+  </div>
+
+  <div class="res-wrap">
+    <div class="cards" id="overview"></div>
+
+    <div class="sec card no-print">
+      <h3>分级阈值（可现场调整）</h3>
+      <p class="hint">错误率口径：该题错误人数 ÷ 实交人数。缺交同学不点任何错题，单独计数、不进入分母。调整下面数值，结果会立刻重算。</p>
+      <div class="th-row">
+        <label class="th-item">大量错误 ≥ <input id="thHigh" type="number" min="1" max="100" step="1" value="50"> %</label>
+        <label class="th-item">中量错误 ≥ <input id="thMid" type="number" min="0" max="99" step="1" value="20"> %</label>
+      </div>
+      <p id="thWarn" class="th-warn"></p>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="sec card">
+      <h3>错题集中在哪里</h3>
+      <p class="hint" id="rankHint">按错误人数从多到少排名，只列出至少有一人做错的题目。</p>
+      <div class="rank" id="rankList"></div>
+    </div>
+
+    <div class="sec card">
+      <h3>逐题明细</h3>
+      <p class="hint">按题号顺序排列，方便对照试卷；「排名」列为该题在错题集中度中的名次。</p>
+      <div style="overflow-x:auto">
+        <table class="tb" id="detailTable">
+          <thead>
+            <tr>
+              <th>题号</th><th>错误人数</th><th>错误率</th><th>错误等级</th><th>错误率分布</th><th>排名</th>
+            </tr>
+          </thead>
+          <tbody id="detailBody"></tbody>
+        </table>
+      </div>
+      <div id="detailEmpty" class="res-empty" style="display:none">还没有录入任何实交学生，无法统计。</div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     一、全局状态
+     ------------------------------------------------------------
+     students[] 中每一位学生的记录结构：
+       { label: '学号/姓名（可空）', wrong: [错题题号数组], absent: true/false }
+     注意：absent = true 表示缺交，此时 wrong 必为空数组。
+     ============================================================ */
+  var S = {
+    phase: 'setup',                                 // setup | entry | result
+    total: 0,                                       // 本次作业题目总数
+    hwName: '本次作业',                              // 作业名称（用于导出文件名）
+    students: [],                                   // 已录入的学生记录
+    cursor: 0,                                      // 当前正在录入/编辑的下标（0 基）
+    draft: { label: '', wrong: [], absent: false },  // 当前这位的草稿
+    th: { high: 50, mid: 20 }                       // 分级阈值（百分数）
+  };
+
+  /* ---------- 小工具 ---------- */
+  function $(sel) { return document.querySelector(sel); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function stamp() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
+           ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function fileStamp() {
+    var d = new Date();
+    return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+           '-' + pad2(d.getHours()) + pad2(d.getMinutes());
+  }
+
+  /* ============================================================
+     二、屏幕切换
+     ============================================================ */
+  function show(phase) {
+    S.phase = phase;
+    ['setup', 'entry', 'result'].forEach(function (p) {
+      $('#scr-' + p).classList.toggle('active', p === phase);
+    });
+    window.scrollTo(0, 0);
+  }
+
+  /* ============================================================
+     三、屏幕 1：初始化
+     ============================================================ */
+  var quickChips = document.getElementById('quickChips');
+  quickChips.addEventListener('click', function (e) {
+    var btn = e.target.closest('.chip');
+    if (!btn) return;
+    $('#totalInput').value = btn.getAttribute('data-n');
+    $('#setupErr').textContent = '';
+  });
+
+  $('#btnStart').addEventListener('click', startSession);
+  $('#totalInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); startSession(); }
+  });
+
+  function startSession() {
+    var raw = $('#totalInput').value.trim();
+    var n = parseInt(raw, 10);
+    if (!raw) { $('#setupErr').textContent = '请先填写本次作业的题目总数。'; return; }
+    if (isNaN(n) || n < 1 || n > 200) {
+      $('#setupErr').textContent = '题目总数请填 1 ~ 200 之间的整数。';
+      return;
+    }
+    S.total = n;
+    S.hwName = $('#hwName').value.trim() || '本次作业';
+    S.students = [];
+    S.cursor = 0;
+    S.draft = { label: '', wrong: [], absent: false };
+
+    $('#tbName').textContent = S.hwName;
+    $('#tbTotal').textContent = '共 ' + n + ' 题';
+    $('#rbName').textContent = S.hwName;
+
+    buildGrid();
+    renderEntry();
+    show('entry');
+  }
+
+  /* ============================================================
+     四、屏幕 2：录入
+     ============================================================ */
+
+  /* 生成题号网格（只生成一次，之后靠 class 切换状态） */
+  function buildGrid() {
+    var html = '';
+    for (var q = 1; q <= S.total; q++) {
+      html += '<button type="button" class="qbtn" data-q="' + q + '">' + q + '</button>';
+    }
+    $('#qGrid').innerHTML = html;
+  }
+
+  /* 题号点击：单次点击切换「错 / 不错」 */
+  $('#qGrid').addEventListener('click', function (e) {
+    var btn = e.target.closest('.qbtn');
+    if (!btn) return;
+    var q = parseInt(btn.getAttribute('data-q'), 10);
+    var idx = S.draft.wrong.indexOf(q);
+    if (idx === -1) { S.draft.wrong.push(q); btn.classList.add('on'); }
+    else            { S.draft.wrong.splice(idx, 1); btn.classList.remove('on'); }
+    S.draft.wrong.sort(function (a, b) { return a - b; });
+    // 一旦手动点了错题，说明这位同学不是缺交
+    if (S.draft.absent) { S.draft.absent = false; $('#draftState').classList.add('hide'); }
+    updatePickCount();
+  });
+
+  function updatePickCount() { $('#pickCount').textContent = S.draft.wrong.length; }
+
+  /* 草稿 -> 数组，并同步到 students[cursor] */
+  function commitDraft() {
+    S.students[S.cursor] = {
+      label: S.draft.label.trim(),
+      wrong: S.draft.absent ? [] : S.draft.wrong.slice(),
+      absent: !!S.draft.absent
+    };
+  }
+  function draftHasContent() {
+    return S.draft.label.trim() !== '' || S.draft.wrong.length > 0 || S.draft.absent;
+  }
+  function loadDraft() {
+    var rec = S.students[S.cursor];
+    if (rec) {
+      S.draft = { label: rec.label, wrong: rec.wrong.slice(), absent: !!rec.absent };
+    } else {
+      S.draft = { label: '', wrong: [], absent: false };
+    }
+  }
+
+  /* ---- 三个动作键 ---- */
+  function nextStudent() {
+    commitDraft();
+    S.cursor = Math.min(S.cursor + 1, S.students.length);
+    loadDraft();
+    renderEntry();
+    // 录入时自动把光标放到题号区，方便连续操作
+    $('#labelInput').value = S.draft.label;
+  }
+  function prevStudent() {
+    if (S.cursor === 0) return;
+    // 只有存在内容（或原本就有一条已存记录）时才提交，避免「上一位」凭空多出一条空记录
+    if (draftHasContent() || S.cursor < S.students.length) commitDraft();
+    S.cursor--;
+    loadDraft();
+    renderEntry();
+  }
+  function markAbsent() {
+    S.draft.absent = true;
+    S.draft.wrong = [];
+    nextStudent();   // commitDraft 会保证缺交记录 wrong 为空
+  }
+
+  $('#btnNext').addEventListener('click', nextStudent);
+  $('#btnPrev').addEventListener('click', prevStudent);
+  $('#btnAbsent').addEventListener('click', markAbsent);
+  $('#btnClear').addEventListener('click', function () {
+    S.draft.wrong = [];
+    S.draft.absent = false;
+    paintGridState();
+    updatePickCount();
+  });
+
+  $('#labelInput').addEventListener('input', function () { S.draft.label = this.value; });
+
+  /* 回车 = 下一位（在按钮上回车时交给按钮自己处理，避免重复触发） */
+  document.addEventListener('keydown', function (e) {
+    if (S.phase !== 'entry') return;
+    if (e.key === 'Enter') {
+      var t = e.target;
+      if (t && t.tagName === 'BUTTON') return;
+      e.preventDefault();
+      nextStudent();
+    }
+  });
+
+  /* 按草稿刷新网格与状态徽标 */
+  function paintGridState() {
+    var btns = $('#qGrid').children;
+    for (var i = 0; i < btns.length; i++) {
+      var q = parseInt(btns[i].getAttribute('data-q'), 10);
+      btns[i].classList.toggle('on', S.draft.wrong.indexOf(q) !== -1);
+    }
+    $('#draftState').classList.toggle('hide', !S.draft.absent);
+    $('#labelInput').value = S.draft.label;
+  }
+
+  /* ---- 渲染整个录入屏 ---- */
+  function renderEntry() {
+    $('#whoIdx').textContent = S.cursor + 1;
+    $('#labelInput').value = S.draft.label;
+    paintGridState();
+    updatePickCount();
+    $('#btnPrev').disabled = (S.cursor === 0);
+
+    renderRoster();
+    renderTopStats();
+  }
+
+  function renderTopStats() {
+    var sub = 0, abs = 0;
+    S.students.forEach(function (s) { if (s.absent) abs++; else sub++; });
+    $('#tbStats').innerHTML =
+      '已录入 <b>' + S.students.length + '</b> 人' +
+      ' · 实交 <b>' + sub + '</b>' +
+      ' · 缺交 <b>' + abs + '</b>';
+  }
+
+  function renderRoster() {
+    $('#rosterCount').textContent = S.students.length;
+    var box = $('#roster');
+    if (S.students.length === 0) {
+      box.innerHTML = '<div class="empty-hint">还没有录入记录<br>点「下一位」开始</div>';
+      return;
+    }
+    var html = '';
+    S.students.forEach(function (s, i) {
+      var meta, cls;
+      if (s.absent)        { meta = '缺交';        cls = 'abs'; }
+      else if (!s.wrong.length) { meta = '全对';    cls = 'ok'; }
+      else                 { meta = '错 ' + s.wrong.length + ' 题'; cls = 'bad'; }
+      var nm = s.label ? esc(s.label) : ('第 ' + (i + 1) + ' 位');
+      html += '<div class="rrow' + (i === S.cursor ? ' cur' : '') + '" data-i="' + i + '">' +
+                '<span class="rname">' + (i + 1) + '. ' + nm + '</span>' +
+                '<span class="rmeta ' + cls + '">' + meta + '</span>' +
+                '<button type="button" class="rdel" data-del="' + i + '" title="删除这条记录">×</button>' +
+              '</div>';
+    });
+    box.innerHTML = html;
+  }
+
+  /* 花名册点击：跳去改 / 删除 */
+  $('#roster').addEventListener('click', function (e) {
+    var del = e.target.closest('[data-del]');
+    if (del) {
+      var di = parseInt(del.getAttribute('data-del'), 10);
+      if (!window.confirm('确定删除「第 ' + (di + 1) + ' 位」的记录吗？后面的序号会自动前移。')) return;
+      if (draftHasContent() || S.cursor < S.students.length) commitDraft();
+      S.students.splice(di, 1);
+      if (S.cursor > S.students.length) S.cursor = S.students.length;
+      loadDraft();
+      renderEntry();
+      return;
+    }
+    var row = e.target.closest('.rrow');
+    if (!row) return;
+    var i = parseInt(row.getAttribute('data-i'), 10);
+    if (draftHasContent() || S.cursor < S.students.length) commitDraft();
+    S.cursor = i;
+    loadDraft();
+    renderEntry();
+  });
+
+  /* ============================================================
+     五、统计计算（唯一口径来源）
+     ------------------------------------------------------------
+     实交人数 submitted = 非缺交的记录数 —— 作为错误率分母
+     每题错误人数 count  = 实交学生中该题被标记为错的人数
+     错误率 rate         = count / submitted * 100
+     ============================================================ */
+  function stats() {
+    var submitted = S.students.filter(function (s) { return !s.absent; });
+    var n = submitted.length;
+    var rows = [];
+    for (var q = 1; q <= S.total; q++) {
+      var c = 0;
+      for (var i = 0; i < n; i++) { if (submitted[i].wrong.indexOf(q) !== -1) c++; }
+      rows.push({ q: q, count: c, rate: n > 0 ? (c / n * 100) : null });
+    }
+    return {
+      qTotal: S.total,                    // 本次作业题目总数
+      people: S.students.length,          // 已录入人数（含缺交）
+      submitted: n,                       // 实交人数 = 错误率分母
+      absent: S.students.length - n,      // 缺交人数
+      rows: rows
+    };
+  }
+
+  /* 成绩等级：无错误单列一档；其余按阈值分大量/中量/小量 */
+  function gradeOf(row, th) {
+    if (row.count === 0)    return { key: 'none', label: '无错误',   color: 'var(--gray)' };
+    if (row.rate >= th.high) return { key: 'high', label: '大量错误', color: 'var(--danger)' };
+    if (row.rate >= th.mid)  return { key: 'mid',  label: '中量错误', color: 'var(--orange)' };
+    return { key: 'low', label: '小量错误', color: 'var(--amber)' };
+  }
+
+  /* 排名：错误人数降序，同分按题号升序 */
+  function ranked(R) {
+    return R.rows.filter(function (r) { return r.count > 0; })
+                 .sort(function (a, b) { return b.count - a.count || a.q - b.q; });
+  }
+
+  /* ============================================================
+     六、屏幕 3：结果
+     ============================================================ */
+  function renderResult() {
+    var R = stats();
+    var th = S.th;
+
+    /* --- 概览卡 --- */
+    var totalWrong = R.rows.reduce(function (a, r) { return a + r.count; }, 0);
+    var avgRate = R.submitted > 0 ? (totalWrong / (R.submitted * R.qTotal) * 100) : null;
+    var top = ranked(R)[0];
+    $('#overview').innerHTML =
+      statCard('实交人数', R.submitted, '人', '共录入 ' + R.people + ' 人') +
+      statCard('缺交人数', R.absent, '人', '不计入错误率') +
+      statCard('题目总数', R.qTotal, '题', '') +
+      statCard('整体错误率', avgRate === null ? '—' : avgRate.toFixed(1), avgRate === null ? '' : '%',
+               '全部题目平均', avgRate !== null && avgRate >= th.high) +
+      statCard('最集中的题', top ? ('第 ' + top.q + ' 题') : '无', '',
+               top ? (top.count + ' 人错 · ' + top.rate.toFixed(1) + '%') : '本次无错题');
+
+    /* --- 阈值回填 + 图例 --- */
+    $('#thHigh').value = th.high;
+    $('#thMid').value = th.mid;
+    $('#legend').innerHTML =
+      legItem('var(--danger)', '大量错误 ≥ ' + th.high + '%') +
+      legItem('var(--orange)', '中量错误 ' + th.mid + '% ~ ' + th.high + '%') +
+      legItem('var(--amber)',  '小量错误 < ' + th.mid + '%') +
+      legItem('var(--gray)',   '无错误（0 人错）');
+
+    /* --- 排名 --- */
+    var rk = ranked(R);
+    var rankMap = {};
+    rk.forEach(function (r, i) { rankMap[r.q] = i + 1; });
+    var rankBox = $('#rankList');
+    if (R.submitted === 0) {
+      rankBox.innerHTML = '<div class="res-empty">还没有实交学生，无法统计错题分布。</div>';
+    } else if (rk.length === 0) {
+      rankBox.innerHTML = '<div class="res-empty">所有题目都没有人做错 🎉</div>';
+    } else {
+      rankBox.innerHTML = rk.map(function (r, i) {
+        var g = gradeOf(r, th);
+        return '<div class="rk' + (i < 3 ? ' top' + (i + 1) : '') + '">' +
+                 '<span class="no">' + (i + 1) + '</span>' +
+                 '<span class="qn">第 ' + r.q + ' 题</span>' +
+                 '<span class="bar"><i style="width:' + r.rate.toFixed(2) + '%;background:' + g.color + '"></i></span>' +
+                 '<span class="num" style="color:' + g.color + '">' + r.count + ' 人错 · ' + r.rate.toFixed(1) + '%</span>' +
+               '</div>';
+      }).join('');
+      $('#rankHint').textContent = '共 ' + rk.length + ' 道题有人做错（占 ' +
+        (rk.length / R.qTotal * 100).toFixed(0) + '% 的题目）。错误人数相同时按题号先后排列。';
+    }
+    if (R.submitted === 0) {
+      $('#rankHint').textContent = '按错误人数从多到少排名，只列出至少有一人做错的题目。';
+    }
+
+    /* --- 明细表（按题号顺序） --- */
+    var body = $('#detailBody');
+    if (R.submitted === 0) {
+      body.innerHTML = '';
+      $('#detailEmpty').style.display = 'block';
+      $('#detailTable').style.display = 'none';
+    } else {
+      $('#detailEmpty').style.display = 'none';
+      $('#detailTable').style.display = '';
+      body.innerHTML = R.rows.map(function (r) {
+        var g = gradeOf(r, th);
+        return '<tr>' +
+                 '<td class="qn">第 ' + r.q + ' 题</td>' +
+                 '<td class="num">' + r.count + ' 人</td>' +
+                 '<td class="num">' + r.rate.toFixed(1) + '%</td>' +
+                 '<td><span class="pill" style="background:' + g.color + '">' + g.label + '</span></td>' +
+                 '<td><span class="mini-bar"><i style="width:' + r.rate.toFixed(2) + '%;background:' + g.color + '"></i></span></td>' +
+                 '<td class="num">' + (rankMap[r.q] ? rankMap[r.q] : '—') + '</td>' +
+               '</tr>';
+      }).join('');
+    }
+  }
+
+  function statCard(k, v, unit, sub, danger) {
+    return '<div class="stat card' + (danger ? ' hi' : '') + '">' +
+             '<div class="k">' + esc(k) + '</div>' +
+             '<div class="v">' + esc(v) + (unit ? '<small>' + esc(unit) + '</small>' : '') + '</div>' +
+             '<div class="k" style="margin:4px 0 0">' + esc(sub || '') + '</div>' +
+           '</div>';
+  }
+  function legItem(color, text) {
+    return '<span><i style="background:' + color + '"></i>' + esc(text) + '</span>';
+  }
+
+  /* ---- 阈值输入：实时校验 + 重算 ---- */
+  function readThresholds() {
+    var hi = parseInt($('#thHigh').value, 10);
+    var mi = parseInt($('#thMid').value, 10);
+    var ok = true, msg = '';
+    if (isNaN(hi) || isNaN(mi)) { ok = false; msg = '阈值必须是数字。'; }
+    else if (hi < 1 || hi > 100) { ok = false; msg = '「大量错误」阈值请在 1 ~ 100 之间。'; }
+    else if (mi < 0 || mi > 99)  { ok = false; msg = '「中量错误」阈值请在 0 ~ 99 之间。'; }
+    else if (mi >= hi)           { ok = false; msg = '「中量错误」阈值必须小于「大量错误」阈值。'; }
+    $('#thHigh').classList.toggle('invalid', !ok);
+    $('#thMid').classList.toggle('invalid', !ok);
+    $('#thWarn').textContent = msg;
+    if (!ok) return false;
+    S.th.high = hi;
+    S.th.mid = mi;
+    return true;
+  }
+  $('#thHigh').addEventListener('input', function () { if (readThresholds()) renderResult(); });
+  $('#thMid').addEventListener('input', function () { if (readThresholds()) renderResult(); });
+
+  /* ---- 屏幕间跳转 ---- */
+  function gotoResult() {
+    if (draftHasContent() || S.cursor < S.students.length) commitDraft();
+    if (S.students.length === 0) {
+      if (!window.confirm('还没有录入任何学生记录，确定要查看统计结果吗？')) return;
+    }
+    renderResult();
+    show('result');
+  }
+  $('#btnResult').addEventListener('click', gotoResult);
+  $('#btnBackEntry').addEventListener('click', function () { renderEntry(); show('entry'); });
+  $('#btnPrint').addEventListener('click', function () { window.print(); });
+
+  /* 重新开始（清空，需二次确认） */
+  function resetAll() {
+    if (S.students.length > 0 &&
+        !window.confirm('确定要清空本次全部录入数据、重新开始吗？此操作不可撤销，建议先导出 CSV。')) return;
+    S.students = [];
+    S.cursor = 0;
+    S.total = 0;
+    S.draft = { label: '', wrong: [], absent: false };
+    $('#qGrid').innerHTML = '';
+    $('#totalInput').value = '';
+    $('#hwName').value = '';
+    $('#setupErr').textContent = '';
+    $('#thWarn').textContent = '';
+    show('setup');
+  }
+  $('#btnResetTop').addEventListener('click', resetAll);
+  $('#btnResetRes').addEventListener('click', resetAll);
+
+  /* ============================================================
+     七、导出 CSV（汇总表）
+     ------------------------------------------------------------
+     按你的选择：只导出汇总表，不含逐人明细。
+     ============================================================ */
+  function csvCell(v) {
+    var s = (v === null || v === undefined) ? '' : String(v);
+    if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function csvRow(arr) { return arr.map(csvCell).join(','); }
+
+  function exportCSV() {
+    if (draftHasContent() || S.cursor < S.students.length) commitDraft();
+    var R = stats();
+    var th = S.th;
+    var rk = ranked(R);
+    var rankMap = {};
+    rk.forEach(function (r, i) { rankMap[r.q] = i + 1; });
+
+    var lines = [];
+    lines.push(csvRow(['错题分布统计表']));
+    lines.push(csvRow(['作业名称', S.hwName]));
+    lines.push(csvRow(['导出时间', stamp()]));
+    lines.push(csvRow(['题目总数', R.qTotal]));
+    lines.push(csvRow(['已录入人数', R.people]));
+    lines.push(csvRow(['实交人数', R.submitted]));
+    lines.push(csvRow(['缺交人数', R.absent]));
+    lines.push(csvRow(['错误率口径', '错误人数 ÷ 实交人数（缺交不计入分母）']));
+    lines.push(csvRow(['分级阈值', '大量错误 ≥ ' + th.high + '%；中量错误 ' + th.mid + '%~' + th.high + '%；小量错误 < ' + th.mid + '%']));
+    lines.push('');
+    lines.push(csvRow(['排名', '题号', '错误人数', '错误率(%)', '错误等级']));
+
+    R.rows.forEach(function (r) {
+      var g = gradeOf(r, th);
+      lines.push(csvRow([
+        rankMap[r.q] ? rankMap[r.q] : '',
+        '第 ' + r.q + ' 题',
+        r.count,
+        r.rate === null ? '' : r.rate.toFixed(1),
+        r.count === 0 ? '无错误' : g.label
+      ]));
+    });
+
+    var csv = '\ufeff' + lines.join('\r\n');   // 加 BOM，Excel 打开不乱码
+    var safeName = S.hwName.replace(/[\\/:*?"<>|]/g, '_');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '错题统计_' + safeName + '_' + fileStamp() + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+  $('#btnExportTop').addEventListener('click', exportCSV);
+  $('#btnExportRes').addEventListener('click', exportCSV);
+
+  /* ============================================================
+     八、误关保护
+     ------------------------------------------------------------
+     本工具按你的选择不做本地持久化，所以加一道「关页面前提醒」，
+     纯保护，不会保存任何数据。
+     ============================================================ */
+  window.addEventListener('beforeunload', function (e) {
+    if (S.phase !== 'setup' && S.students.length > 0) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+})();
+</script>
+</body>
+</html>
